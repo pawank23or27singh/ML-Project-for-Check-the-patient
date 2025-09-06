@@ -1,10 +1,27 @@
+import os
+import sys
+import time
 import numpy as np
 import pandas as pd
 import streamlit as st
 from streamlit_option_menu import option_menu
-from sklearn.linear_model import LogisticRegression
+import joblib
 from sklearn.model_selection import train_test_split
-import os
+from sklearn.linear_model import LogisticRegression
+from model_loader import DiseasePredictor
+
+# Add the current directory to path to import train_all_models
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from train_all_models import DiseaseModelTrainer
+
+# Initialize the disease predictor and model trainer
+try:
+    predictor = DiseasePredictor()
+    model_trainer = DiseaseModelTrainer()
+    MODELS_LOADED = True
+except Exception as e:
+    st.sidebar.error(f"Error initializing models: {str(e)}")
+    MODELS_LOADED = False
 
 # Set page config first
 st.set_page_config(page_title="Health Prediction App", page_icon="🏥", layout="wide")
@@ -15,10 +32,72 @@ with st.sidebar:
         'Multiple Disease Prediction System',
         ['Home', 'Heart Disease Prediction', 'Parkinsons Prediction', 
          'Lung Cancer Prediction', 'Diabetes Prediction', 'Stroke Prediction', 
-         'Chronic Kidney Disease Prediction'],
-        icons=['house', 'heart', 'person', 'lungs', 'clipboard2-pulse', 'activity', 'droplet'],
+         'Chronic Kidney Disease Prediction', 'Asthma Prediction', 'CBC Blood Test Analysis'],
+        icons=['house', 'heart', 'person', 'lungs', 'clipboard2-pulse', 'activity', 'droplet', 'wind', 'eyedropper'],
         default_index=0
     )
+    
+    # Add model training section
+    st.markdown("---")
+    st.subheader("Model Management")
+    
+    if st.button("🔄 Retrain All Models"):
+        with st.spinner("Training models. This may take a few minutes..."):
+            try:
+                # Create a placeholder for progress updates
+                progress_text = st.empty()
+                
+                # Redirect stdout to capture training output
+                from io import StringIO
+                import sys
+                
+                old_stdout = sys.stdout
+                sys.stdout = StringIO()
+                
+                # Run the training
+                model_trainer.run()
+                
+                # Get the output
+                output = sys.stdout.getvalue()
+                sys.stdout = old_stdout
+                
+                # Reload models after training
+                predictor = DiseasePredictor()
+                
+                # Show success message
+                st.success("✅ Models trained successfully!")
+                
+                # Show training output in expander
+                with st.expander("View Training Logs"):
+                    st.text(output)
+                
+                # Refresh the page to load new models
+                if hasattr(st, 'rerun'):
+                    st.rerun()
+                elif hasattr(st, 'experimental_rerun'):
+                    st.experimental_rerun()
+                
+            except Exception as e:
+                st.error(f"❌ Error training models: {str(e)}")
+                st.exception(e)
+    
+    st.markdown("---")
+    
+    # Show model status
+    st.subheader("Model Status")
+    if MODELS_LOADED:
+        available_models = predictor.get_available_models()
+        if available_models:
+            st.success(f"✅ {len(available_models)} models loaded")
+            for model in available_models:
+                info = predictor.get_model_info(model)
+                status = "✅" if info['status'] == 'ready' else "⚠️"
+                scaler_status = "✅" if info['has_scaler'] else "⚠️"
+                st.write(f"- {model.capitalize()}: {status} Model {scaler_status} Scaler")
+        else:
+            st.warning("⚠️ No models loaded. Please train the models first.")
+    else:
+        st.error("❌ Models not loaded")
 
 # Home Page
 if selected == 'Home':
@@ -48,6 +127,13 @@ if selected == 'Home':
 
         st.markdown(''':hospital: **Chronic Kidney Disease**  
         Assess your risk of chronic kidney disease''') 
+    
+    with col3:
+        st.markdown(''':drop_of_blood: **CBC Blood Test Analysis**  
+        Analyze your complete blood count (CBC) test results''') 
+
+        st.markdown(''':hospital: **Asthma**  
+        Predict your risk of asthma''')
     
 diabetes_model = None
 
@@ -164,110 +250,124 @@ if selected == 'Diabetes Prediction':
                 st.warning('Diabetes prediction model is not available. Please check the error message in the sidebar.')
 
 
-# Load Heart Disease Model
-heart_model = None
-heart_features = None
-if os.path.exists('heart.csv'):
-    try:
-        heart_data = pd.read_csv('heart.csv')
-        if 'target' not in heart_data.columns:
-            st.sidebar.error("Error: 'target' column not found in heart.csv")
-        else:
-            Xh = heart_data.drop(columns=['target'])
-            yh = heart_data['target']
-            Xh_train, Xh_test, yh_train, yh_test = train_test_split(
-                Xh, yh, test_size=0.2, random_state=42
-            )
-            model = LogisticRegression(
-                random_state=42, 
-                max_iter=5000,
-                class_weight='balanced',
-                solver='lbfgs',
-                tol=1e-4
-            )
-            heart_model = model.fit(Xh_train, yh_train)
-            heart_features = Xh.columns.tolist()
-    except Exception as e:
-        st.sidebar.error(f"Error loading heart disease model: {str(e)}")
-else:
-    st.sidebar.error('Missing heart.csv file. Heart disease prediction will not work.')
+# Heart Disease Model Configuration
+HEART_FEATURES = [
+    'age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg',
+    'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal'
+]
 # heart disease prediction       
 if selected == 'Heart Disease Prediction':
     st.title('Heart Disease Prediction')
     st.write("Please enter the following details:")
 
-    if heart_model is None:
-        st.error("Heart disease prediction model is not available. Please check the error message in the sidebar.")
+    if not MODELS_LOADED or 'heart' not in predictor.models:
+        st.error("Heart disease prediction model is not available. Please check if the model is properly trained.")
         st.stop()
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        age = st.number_input('Age (years)', min_value=0, max_value=120, value=50, step=1)
-        trestbps = st.number_input('Resting Blood Pressure (mmHg)', min_value=80, max_value=200, value=120, step=1)
-        restecg = st.selectbox('Resting ECG', 
-                             ['Normal (0)', 'ST-T wave abnormality (1)', 'Left ventricular hypertrophy (2)'],
-                             index=0)
-        oldpeak = st.number_input('ST Depression (0-6.2)', min_value=0.0, max_value=6.2, value=1.0, step=0.1, format="%.1f")
-        thal = st.selectbox('Thalassemia', 
-                          ['Normal (0)', 'Fixed defect (1)', 'Reversible defect (2)'],
-                          index=0)
-    with col2:
-        sex = st.radio('Sex', ['Female (0)', 'Male (1)'], index=1)
-        chol = st.number_input('Cholesterol (mg/dL)', min_value=100, max_value=600, value=200, step=1)
-        thalach = st.number_input('Max Heart Rate (bpm)', min_value=60, max_value=220, value=150, step=1)
-        slope = st.selectbox('ST Slope', 
-                           ['Upsloping (0)', 'Flat (1)', 'Downsloping (2)'],
-                           index=1)
-    with col3:
-        cp = st.selectbox('Chest Pain Type', 
-                         ['Typical Angina (0)', 'Atypical Angina (1)', 
-                          'Non-Anginal Pain (2)', 'Asymptomatic (3)'],
-                         index=0)
-        fbs = st.radio('Fasting Blood Sugar > 120 mg/dL', ['No (0)', 'Yes (1)'], index=0)
-        exang = st.radio('Exercise Induced Angina', ['No (0)', 'Yes (1)'], index=0)
-        ca = st.number_input('Number of Major Vessels (0-3)', min_value=0, max_value=3, value=0, step=1)
-
-    if st.button('Predict Heart Disease Risk'):
-        try:
-            # Prepare input data
-            input_data = {
-                'age': [age],
-                'sex': [0 if 'Female' in sex else 1],
-                'cp': [int(cp.split('(')[1].strip(')'))],
-                'trestbps': [trestbps],
-                'chol': [chol],
-                'fbs': [1 if 'Yes' in fbs else 0],
-                'restecg': [int(restecg.split('(')[1].strip(')'))],
-                'thalach': [thalach],
-                'exang': [1 if 'Yes' in exang else 0],
-                'oldpeak': [oldpeak],
-                'slope': [int(slope.split('(')[1].strip(')'))],
-                'ca': [ca],
-                'thal': [int(thal.split('(')[1].strip(')'))]
-            }
-            
-            input_df = pd.DataFrame(input_data)
+    with st.form("heart_disease_form"):
+        col1, col2, col3 = st.columns(3)
         
-            for col in heart_features:
-                if col not in input_df.columns:
-                    input_df[col] = 0  # Add missing columns with default value 0
+        with col1:
+            age = st.number_input('Age (years)', min_value=0, max_value=120, value=50, step=1)
+            trestbps = st.number_input('Resting Blood Pressure (mmHg)', min_value=80, max_value=200, value=120, step=1)
+            restecg = st.selectbox('Resting ECG', 
+                                ['0', '1', '2'],
+                                format_func=lambda x: {
+                                    '0': 'Normal',
+                                    '1': 'ST-T wave abnormality',
+                                    '2': 'Left ventricular hypertrophy'
+                                }[x])
+            oldpeak = st.number_input('ST Depression (0-6.2)', min_value=0.0, max_value=6.2, value=1.0, step=0.1, format="%.1f")
             
-            # Reorder columns to match training data
-            input_df = input_df[heart_features]
+        with col2:
+            sex = st.radio('Sex', ['0', '1'], format_func=lambda x: 'Female' if x == '0' else 'Male')
+            chol = st.number_input('Cholesterol (mg/dL)', min_value=100, max_value=600, value=200, step=1)
+            thalach = st.number_input('Max Heart Rate (bpm)', min_value=60, max_value=220, value=150, step=1)
+            slope = st.selectbox('ST Slope', 
+                               ['0', '1', '2'],
+                               format_func=lambda x: {
+                                   '0': 'Upsloping',
+                                   '1': 'Flat',
+                                   '2': 'Downsloping'
+                               }[x])
             
-            #prediction
-            prediction = heart_model.predict(input_df)
-            proba = heart_model.predict_proba(input_df)[0][1] * 100
-            
-            if prediction[0] == 1:
-                st.error(f'⚠️ High risk of heart disease (Probability: {proba:.1f}%)')
-                st.warning('Please consult a healthcare professional for further evaluation.')
-            else:
-                st.success(f'✅ Low risk of heart disease (Probability: {100-proba:.1f}%)')
-                st.info('Maintain a healthy lifestyle and regular check-ups.')
+        with col3:
+            cp = st.selectbox('Chest Pain Type', 
+                            ['0', '1', '2', '3'],
+                            format_func=lambda x: {
+                                '0': 'Typical Angina',
+                                '1': 'Atypical Angina',
+                                '2': 'Non-Anginal Pain',
+                                '3': 'Asymptomatic'
+                            }[x])
+            fbs = st.radio('Fasting Blood Sugar > 120 mg/dL', ['0', '1'], format_func=lambda x: 'No' if x == '0' else 'Yes')
+            exang = st.radio('Exercise Induced Angina', ['0', '1'], format_func=lambda x: 'No' if x == '0' else 'Yes')
+            ca = st.number_input('Number of Major Vessels (0-3)', min_value=0, max_value=3, value=0, step=1)
+            thal = st.selectbox('Thalassemia', 
+                              ['0', '1', '2'],
+                              format_func=lambda x: {
+                                  '0': 'Normal',
+                                  '1': 'Fixed defect',
+                                  '2': 'Reversible defect'
+                              }[x])
+        
+        submitted = st.form_submit_button("Predict Heart Disease Risk", type="primary")
+        
+        if submitted:
+            try:
+                # Prepare input data
+                input_data = {
+                    'age': int(age),
+                    'sex': int(sex),
+                    'cp': int(cp),
+                    'trestbps': int(trestbps),
+                    'chol': int(chol),
+                    'fbs': int(fbs),
+                    'restecg': int(restecg),
+                    'thalach': int(thalach),
+                    'exang': int(exang),
+                    'oldpeak': float(oldpeak),
+                    'slope': int(slope),
+                    'ca': int(ca),
+                    'thal': int(thal)
+                }
                 
-        except Exception as e:
-            st.error(f'An error occurred during prediction: {str(e)}')
+                # Make prediction
+                confidence, scores = predictor.predict('heart', input_data)
+                risk_percentage = confidence * 100
+                
+                # Display results
+                st.markdown("## Prediction Results")
+                
+                if risk_percentage >= 50:
+                    st.error(f'⚠️ **High risk of heart disease** (Confidence: {risk_percentage:.1f}%)')
+                    st.warning('''
+                    **Recommendations:**
+                    - Please consult a healthcare professional for further evaluation
+                    - Schedule a check-up with a cardiologist
+                    - Monitor your blood pressure and cholesterol regularly
+                    - Consider lifestyle changes: exercise, diet, stress management
+                    ''')
+                else:
+                    st.success(f'✅ **Low risk of heart disease** (Confidence: {100-risk_percentage:.1f}%)')
+                    st.info('''
+                    **Preventive Measures:**
+                    - Maintain a healthy lifestyle
+                    - Exercise regularly (at least 150 minutes per week)
+                    - Eat a balanced diet rich in fruits and vegetables
+                    - Get regular health check-ups
+                    - Avoid smoking and limit alcohol consumption
+                    ''')
+                
+                # Show confidence scores
+                with st.expander("View detailed confidence scores"):
+                    st.write("Prediction confidence by class:")
+                    for cls, score in scores.items():
+                        st.write(f"- Class {cls}: {score*100:.1f}%")
+                
+            except Exception as e:
+                st.error(f'An error occurred during prediction: {str(e)}')
+                st.error('Please check if all input values are correct and try again.')
 
 # Parkinson's Disease Prediction
 parkinsons_model = None
@@ -707,7 +807,7 @@ if selected == "Lung Cancer Prediction":
                     - Test your home for radon and take steps to reduce levels if high
                     - Follow workplace safety guidelines if exposed to carcinogens
                     - Eat a diet rich in fruits and vegetables
-                    - Exercise most days of the week
+                    - Exercise regularly (at least 150 minutes per week)
                     - Get regular medical check-ups
                     """)
                 
@@ -1077,3 +1177,389 @@ if selected == "Chronic Kidney Disease Prediction":
                 if ckd_feature_columns is not None:
                     st.write("### Expected Features")
                     st.write(ckd_feature_columns)
+
+# Asthma Prediction
+if selected == 'Asthma Prediction':
+    st.title('Asthma Risk Assessment')
+    st.write('Please provide the following information to assess your asthma risk.')
+
+    with st.form('asthma_form'):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            age = st.number_input('Age (years)', min_value=0, max_value=120, value=30)
+            bmi = st.number_input('BMI', min_value=10.0, max_value=50.0, value=25.0, step=0.1)
+            smoking = st.selectbox('Smoking Status', ['Never', 'Former', 'Current'])
+            pollution = st.slider('Pollution Exposure (1-10 scale)', 1, 10, 3)
+            pollen = st.slider('Pollen Exposure (1-10 scale)', 1, 10, 3)
+            family_history = st.selectbox('Family History of Asthma', ['No', 'Yes'])
+            allergies = st.selectbox('History of Allergies', ['No', 'Seasonal', 'Perennial', 'Both'])
+        
+        with col2:
+            wheezing = st.selectbox('Experience Wheezing', ['Never', 'Rarely', 'Sometimes', 'Often'])
+            sob = st.selectbox('Shortness of Breath', ['Never', 'With Exercise', 'At Rest', 'Frequent'])
+            chest_tightness = st.selectbox('Chest Tightness', ['Never', 'Occasional', 'Frequent', 'Constant'])
+            coughing = st.selectbox('Coughing', ['Never', 'Occasional', 'Frequent', 'Constant'])
+            nighttime = st.selectbox('Nighttime Symptoms', ['Never', '1-2x/month', '1-2x/week', '3-4x/week', 'Daily'])
+            exercise = st.selectbox('Exercise-Induced Symptoms', ['Never', 'Rarely', 'Sometimes', 'Always'])
+            fev1 = st.number_input('Lung Function FEV1 (% predicted)', min_value=20, max_value=150, value=90)
+            fvc = st.number_input('Lung Function FVC (% predicted)', min_value=20, max_value=150, value=95)
+        
+        submitted = st.form_submit_button('Assess Asthma Risk')
+    
+    if submitted:
+        with st.spinner('Analyzing your information...'):
+            try:
+                # Prepare input data
+                input_data = {
+                    'age': age,
+                    'bmi': bmi,
+                    'smoking': 0 if smoking == 'Never' else (1 if smoking == 'Former' else 2),
+                    'pollution': pollution,
+                    'pollen': pollen,
+                    'family_history': 1 if family_history == 'Yes' else 0,
+                    'allergies': ['No', 'Seasonal', 'Perennial', 'Both'].index(allergies),
+                    'wheezing': ['Never', 'Rarely', 'Sometimes', 'Often'].index(wheezing),
+                    'shortness_of_breath': ['Never', 'With Exercise', 'At Rest', 'Frequent'].index(sob),
+                    'chest_tightness': ['Never', 'Occasional', 'Frequent', 'Constant'].index(chest_tightness),
+                    'coughing': ['Never', 'Occasional', 'Frequent', 'Constant'].index(coughing),
+                    'nighttime_symptoms': ['Never', '1-2x/month', '1-2x/week', '3-4x/week', 'Daily'].index(nighttime),
+                    'exercise_induced': ['Never', 'Rarely', 'Sometimes', 'Always'].index(exercise),
+                    'fev1': fev1,
+                    'fvc': fvc
+                }
+                
+                # Make prediction
+                if MODELS_LOADED and 'asthma' in predictor.models:
+                    confidence, scores = predictor.predict('asthma', input_data)
+                    risk_percentage = scores.get('1', 0) * 100
+                    
+                    st.subheader('Asthma Risk Assessment Results')
+                    
+                    # Display risk level
+                    if risk_percentage < 30:
+                        st.success(f'🟢 Low Risk of Asthma ({risk_percentage:.1f}%)')
+                        st.write("Your responses suggest a low likelihood of asthma. However, if you experience any symptoms, please consult a healthcare professional.")
+                    elif risk_percentage < 70:
+                        st.warning(f'🟡 Moderate Risk of Asthma ({risk_percentage:.1f}%)')
+                        st.write("Your responses suggest a moderate risk of asthma. Consider consulting a healthcare professional for further evaluation.")
+                    else:
+                        st.error(f'🔴 High Risk of Asthma ({risk_percentage:.1f}%)')
+                        st.write("Your responses suggest a high risk of asthma. Please consult a healthcare professional for proper diagnosis and management.")
+                    
+                    # Show detailed results
+                    with st.expander("View Detailed Assessment"):
+                        st.write("### Risk Factors Identified:")
+                        if input_data['smoking'] == 2:
+                            st.write("- Current smoker (increases risk)")
+                        elif input_data['smoking'] == 1:
+                            st.write("- Former smoker (slightly increased risk)")
+                            
+                        if input_data['family_history'] == 1:
+                            st.write("- Family history of asthma (increases risk)")
+                            
+                        if input_data['allergies'] > 0:
+                            st.write(f"- History of {['', 'seasonal', 'perennial', 'seasonal and perennial'][input_data['allergies']]} allergies (increases risk)")
+                        
+                        if input_data['wheezing'] > 0 or input_data['shortness_of_breath'] > 0 or input_data['chest_tightness'] > 0 or input_data['coughing'] > 0:
+                            st.write("- Current respiratory symptoms (increases risk)")
+                        
+                        st.write("\n### Recommendations:")
+                        st.write("1. Avoid known allergens and irritants")
+                        st.write("2. Monitor your symptoms and keep a symptom diary")
+                        st.write("3. Consider using an air purifier at home")
+                        st.write("4. Get vaccinated against flu and pneumonia")
+                        st.write("5. Follow up with a healthcare provider for further evaluation")
+                        
+                else:
+                    st.warning("Asthma prediction model is not available. Please try again later or contact support.")
+                
+            except Exception as e:
+                st.error("An error occurred during prediction. Please try again or contact support if the issue persists.")
+                st.error(f"Error details: {str(e)}")
+
+# CBC Blood Test Analysis
+if selected == 'CBC Blood Test Analysis':
+    st.title('Complete Blood Count (CBC) Analysis')
+    st.write('Enter your CBC test results to check if they are within normal ranges and get a health prediction.')
+    
+    # Load blood test model if available
+    blood_test_model = None
+    blood_test_scaler = None
+    blood_test_encoder = None
+    
+    try:
+        if os.path.exists('models/blood_test_model.joblib') and \
+           os.path.exists('models/blood_test_scaler.joblib') and \
+           os.path.exists('models/blood_test_label_encoder.joblib'):
+            
+            blood_test_model = joblib.load('models/blood_test_model.joblib')
+            blood_test_scaler = joblib.load('models/blood_test_scaler.joblib')
+            blood_test_encoder = joblib.load('models/blood_test_label_encoder.joblib')
+            st.sidebar.success("✓ Blood test prediction model loaded successfully")
+        else:
+            st.sidebar.warning("⚠️ Blood test prediction model not found. Running in analysis mode only.")
+    except Exception as e:
+        st.sidebar.error(f"Error loading blood test model: {str(e)}")
+    
+    # CBC reference ranges
+    cbc_reference = {
+        'Parameter': ['WBC', 'RBC', 'Hemoglobin', 'Hematocrit', 'MCV', 'MCH', 'MCHC', 'Platelets', 'Neutrophils', 'Lymphocytes', 'Monocytes', 'Eosinophils', 'Basophils'],
+        'Unit': ['x10^9/L', 'x10^12/L', 'g/dL', '%', 'fL', 'pg', 'g/dL', 'x10^9/L', '%', '%', '%', '%', '%'],
+        'Male_Low': [4.0, 4.5, 13.5, 38.8, 80, 27, 32, 150, 40, 20, 2, 1, 0],
+        'Male_High': [11.0, 6.1, 17.5, 50.0, 100, 33, 36, 450, 75, 50, 10, 6, 1],
+        'Female_Low': [4.0, 4.0, 12.0, 34.9, 80, 27, 32, 150, 40, 20, 2, 1, 0],
+        'Female_High': [11.0, 5.4, 15.5, 44.5, 100, 33, 36, 450, 75, 50, 10, 6, 1]
+    }
+    
+    # Create a DataFrame from the reference data
+    cbc_ref_df = pd.DataFrame(cbc_reference)
+    
+    # User inputs
+    st.sidebar.header('Patient Information')
+    gender = st.sidebar.radio('Gender', ['Male', 'Female'])
+    age = st.sidebar.number_input('Age (years)', min_value=0, max_value=120, value=30)
+    
+    st.header('Enter CBC Test Results')
+    
+    # Create input fields for each parameter
+    cbc_results = {}
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        cbc_results['WBC'] = st.number_input('White Blood Cells (WBC)', min_value=0.0, max_value=100.0, value=7.0, step=0.1, format="%.1f")
+        cbc_results['RBC'] = st.number_input('Red Blood Cells (RBC)', min_value=0.0, max_value=10.0, value=5.0, step=0.1, format="%.1f")
+        cbc_results['Hemoglobin'] = st.number_input('Hemoglobin', min_value=0.0, max_value=30.0, value=14.5, step=0.1, format="%.1f")
+        cbc_results['Hematocrit'] = st.number_input('Hematocrit', min_value=0.0, max_value=70.0, value=42.0, step=0.1, format="%.1f")
+        cbc_results['MCV'] = st.number_input('Mean Corpuscular Volume (MCV)', min_value=50.0, max_value=120.0, value=90.0, step=0.1, format="%.1f")
+        cbc_results['MCH'] = st.number_input('Mean Corpuscular Hemoglobin (MCH)', min_value=20.0, max_value=40.0, value=30.0, step=0.1, format="%.1f")
+        
+    with col2:
+        cbc_results['MCHC'] = st.number_input('MCH Concentration (MCHC)', min_value=20.0, max_value=40.0, value=34.0, step=0.1, format="%.1f")
+        cbc_results['Platelets'] = st.number_input('Platelets', min_value=0, max_value=1000, value=250, step=1)
+        cbc_results['Neutrophils'] = st.number_input('Neutrophils', min_value=0, max_value=100, value=60, step=1, format="%d")
+        cbc_results['Lymphocytes'] = st.number_input('Lymphocytes', min_value=0, max_value=100, value=30, step=1, format="%d")
+        cbc_results['Monocytes'] = st.number_input('Monocytes', min_value=0, max_value=100, value=5, step=1, format="%d")
+        cbc_results['Eosinophils'] = st.number_input('Eosinophils', min_value=0, max_value=100, value=2, step=1, format="%d")
+        cbc_results['Basophils'] = st.number_input('Basophils', min_value=0, max_value=100, value=1, step=1, format="%d")
+    
+    # Add a section for model prediction if model is available
+    if blood_test_model is not None:
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Model Prediction")
+        st.sidebar.write("Get a health prediction based on your CBC results.")
+        
+        # Add a button in the sidebar for prediction
+        predict_health = st.sidebar.button('Predict Health Status', type="primary")
+    
+    # Analyze button
+    if st.button('Analyze CBC Results'):
+        st.header('Analysis Results')
+        
+        # If prediction was requested from sidebar
+        if 'predict_health' in locals() and predict_health:
+            try:
+                # Prepare input data for the model
+                input_data = {
+                    'WBC': [cbc_results['WBC']],
+                    'RBC': [cbc_results['RBC']],
+                    'Hemoglobin': [cbc_results['Hemoglobin']],
+                    'Hematocrit': [cbc_results['Hematocrit']],
+                    'MCV': [cbc_results['MCV']],
+                    'MCH': [cbc_results['MCH']],
+                    'MCHC': [cbc_results['MCHC']],
+                    'Platelets': [cbc_results['Platelets']],
+                    'Neutrophils': [cbc_results['Neutrophils']],
+                    'Lymphocytes': [cbc_results['Lymphocytes']],
+                    'Monocytes': [cbc_results['Monocytes']],
+                    'Eosinophils': [cbc_results['Eosinophils']],
+                    'Basophils': [cbc_results['Basophils']]
+                }
+                
+                # Convert to DataFrame
+                input_df = pd.DataFrame(input_data)
+                
+                # Scale the features
+                input_scaled = blood_test_scaler.transform(input_df)
+                
+                # Make prediction
+                prediction_proba = blood_test_model.predict_proba(input_scaled)[0]
+                prediction = blood_test_model.predict(input_scaled)[0]
+                
+                # Get the predicted class name if label encoder is available
+                if blood_test_encoder is not None:
+                    prediction_label = blood_test_encoder.inverse_transform([prediction])[0]
+                else:
+                    prediction_label = f"Class {prediction}"
+                
+                # Display prediction results
+                st.markdown("## Health Prediction")
+                
+                # Create a nice progress bar for the prediction confidence
+                confidence = max(prediction_proba) * 100
+                st.metric("Predicted Health Status", prediction_label)
+                st.progress(float(confidence/100))
+                st.caption(f"Prediction Confidence: {confidence:.1f}%")
+                
+                # Add interpretation based on prediction
+                st.markdown("### Interpretation")
+                if prediction == 1:  # Assuming 1 is the positive class
+                    st.warning("The model has detected potential health concerns based on your CBC results.")
+                    st.markdown("""
+                    **Recommendations:**
+                    - Consult with a healthcare provider for a comprehensive evaluation
+                    - Share these results with your doctor during your next visit
+                    - Consider lifestyle changes if recommended by your healthcare provider
+                    - Schedule a follow-up test if symptoms persist
+                    """)
+                else:
+                    st.success("Your CBC results appear to be within normal ranges.")
+                    st.markdown("""
+                    **Maintenance Tips:**
+                    - Continue with your healthy lifestyle
+                    - Maintain regular check-ups
+                    - Stay hydrated and eat a balanced diet
+                    - Get adequate rest and exercise regularly
+                    """)
+                
+                # Show detailed probabilities if available
+                if len(prediction_proba) > 2:  # Multi-class classification
+                    st.markdown("### Detailed Probabilities")
+                    proba_df = pd.DataFrame({
+                        'Health Status': [blood_test_encoder.inverse_transform([i])[0] for i in range(len(prediction_proba))],
+                        'Probability': [f"{p*100:.1f}%" for p in prediction_proba]
+                    })
+                    st.dataframe(proba_df, hide_index=True, use_container_width=True)
+                
+                st.markdown("---")
+                
+            except Exception as e:
+                st.error(f"An error occurred during prediction: {str(e)}")
+                with st.expander("Technical Details"):
+                    st.write("Error details:", str(e))
+        
+        # Create a results table
+        results = []
+        for param in cbc_ref_df['Parameter']:
+            value = cbc_results[param]
+            unit = cbc_ref_df[cbc_ref_df['Parameter'] == param]['Unit'].values[0]
+            
+            if gender == 'Male':
+                low = cbc_ref_df[cbc_ref_df['Parameter'] == param]['Male_Low'].values[0]
+                high = cbc_ref_df[cbc_ref_df['Parameter'] == param]['Male_High'].values[0]
+            else:
+                low = cbc_ref_df[cbc_ref_df['Parameter'] == param]['Female_Low'].values[0]
+                high = cbc_ref_df[cbc_ref_df['Parameter'] == param]['Female_High'].values[0]
+            
+            status = 'Normal'
+            if value < low:
+                status = 'Low ⚠️'
+            elif value > high:
+                status = 'High ⚠️'
+            
+            results.append({
+                'Parameter': param,
+                'Your Value': f"{value} {unit}",
+                'Reference Range': f"{low}-{high} {unit}",
+                'Status': status
+            })
+        
+        # Display results in a table
+        results_df = pd.DataFrame(results)
+        st.dataframe(
+            results_df,
+            column_config={
+                'Parameter': 'Parameter',
+                'Your Value': 'Your Value',
+                'Reference Range': 'Reference Range',
+                'Status': 'Status'
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+        
+        # Add interpretation
+        st.subheader('Interpretation')
+        
+        # Check for critical values
+        critical_issues = []
+        
+        # Check WBC
+        if cbc_results['WBC'] < 2.0 or cbc_results['WBC'] > 20.0:
+            critical_issues.append(f"- **Critical**: Abnormal WBC level ({cbc_results['WBC']} x10^9/L). This may indicate a serious condition and requires immediate medical attention.")
+        
+        # Check Hemoglobin
+        if cbc_results['Hemoglobin'] < 7.0:
+            critical_issues.append(f"- **Critical**: Severely low hemoglobin level ({cbc_results['Hemoglobin']} g/dL). This may indicate severe anemia and requires immediate medical attention.")
+        
+        # Check Platelets
+        if cbc_results['Platelets'] < 50:
+            critical_issues.append(f"- **Critical**: Extremely low platelet count ({cbc_results['Platelets']} x10^9/L). This increases the risk of bleeding and requires immediate medical attention.")
+        
+        if critical_issues:
+            st.warning('\n'.join(critical_issues), icon="⚠️")
+        
+        # General interpretation
+        st.write("### General Interpretation:")
+        
+        # WBC interpretation
+        if cbc_results['WBC'] < 4.0:
+            st.write("- **Low WBC (Leukopenia)**: May indicate viral infections, bone marrow disorders, or autoimmune conditions.")
+        elif cbc_results['WBC'] > 11.0:
+            st.write("- **High WBC (Leukocytosis)**: May indicate bacterial infections, inflammation, or blood disorders.")
+        
+        # RBC/Hemoglobin interpretation
+        if cbc_results['Hemoglobin'] < (13.5 if gender == 'Male' else 12.0):
+            st.write("- **Low Hemoglobin (Anemia)**: May be due to iron deficiency, vitamin B12/folate deficiency, chronic disease, or blood loss.")
+        
+        # Platelets interpretation
+        if cbc_results['Platelets'] < 150:
+            st.write("- **Low Platelets (Thrombocytopenia)**: May increase bleeding risk. Can be caused by infections, medications, or bone marrow disorders.")
+        elif cbc_results['Platelets'] > 450:
+            st.write("- **High Platelets (Thrombocytosis)**: May increase clotting risk. Can be reactive or due to blood disorders.")
+        
+        st.write("\n*Note: This is an automated analysis. Please consult with a healthcare professional for a complete evaluation.*")
+    
+    # Display reference ranges
+    if st.sidebar.checkbox('Show CBC Reference Ranges'):
+        st.sidebar.subheader('CBC Reference Ranges')
+        st.sidebar.dataframe(cbc_ref_df, hide_index=True)
+    
+    # Add information about CBC test
+    with st.expander("About Complete Blood Count (CBC) Test"):
+        st.write("""
+        A Complete Blood Count (CBC) is a common blood test that helps evaluate your overall health and detect a wide range of disorders, including:
+        - Anemia
+        - Infection
+        - Leukemia
+        - Bleeding disorders
+        - Immune system disorders
+        
+        The test measures several components and features of your blood, including red blood cells, white blood cells, and platelets.
+        """)
+
+
+if selected == 'Alzheimer Disease Prediction':
+    st.title('Alzheimer\'s Disease Risk Assessment')
+    st.write("Please enter the following details:")
+    
+    if not MODELS_LOADED or 'alzheimer' not in predictor.models:
+        st.error("Alzheimer disease prediction model is not available. Please check if the model is properly trained.")
+        st.stop()
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### Alzheimer's Disease Features")
+        age = st.number_input('Age', min_value=0, max_value=120, value=60)
+        
+    
+    
+    # Add disclaimer
+    st.sidebar.info("""
+    **Disclaimer**
+    
+    This tool is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. 
+    Always seek the advice of your physician or other qualified health provider with any questions you may have 
+    regarding a medical condition.
+    """)

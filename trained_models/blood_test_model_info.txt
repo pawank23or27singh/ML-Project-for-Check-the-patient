@@ -1,0 +1,24 @@
+Blood Test Analysis Model
+Model Type: gradientboosting
+Accuracy: 0.9650
+F1 Score: 0.9542
+ROC AUC: 0.9151
+
+Feature Importances (if available):
+  WBC: 0.4185
+  HGB: 0.2587
+  PLT: 0.0746
+  LYMPH: 0.0620
+  MCHC: 0.0432
+  MPV: 0.0315
+  NEUT: 0.0151
+  BASO: 0.0150
+  EO: 0.0146
+  RBC: 0.0144
+  PCT: 0.0133
+  MCV: 0.0117
+  PDW: 0.0098
+  RDW: 0.0067
+  HCT: 0.0059
+  MONO: 0.0027
+  MCH: 0.0025

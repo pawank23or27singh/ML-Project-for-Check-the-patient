@@ -143,6 +143,8 @@ Ensure you have the following datasets in your project directory:
 - Lung Cancer Dataset: Custom dataset
 - Stroke Prediction Dataset: [Source]
 - Chronic Kidney Disease Dataset: EHRs from Abu Dhabi
+- CSB blood test Dataset: [Source]
+-Asthama diseases dataset
 
 ## ⚠️ Disclaimer
 

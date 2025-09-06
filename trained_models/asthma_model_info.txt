@@ -1,0 +1,22 @@
+Asthma Prediction Model
+Model Type: randomforest
+Accuracy: 0.8300
+F1 Score: 0.8295
+ROC AUC: 0.9069
+
+Feature Importances (if available):
+  fvc: 0.0889
+  family_history: 0.0840
+  age: 0.0788
+  fev1: 0.0782
+  shortness_of_breath: 0.0757
+  pollen: 0.0754
+  bmi: 0.0746
+  pollution: 0.0744
+  coughing: 0.0727
+  wheezing: 0.0710
+  chest_tightness: 0.0630
+  allergies: 0.0582
+  smoking: 0.0464
+  nighttime_symptoms: 0.0312
+  exercise_induced: 0.0275
