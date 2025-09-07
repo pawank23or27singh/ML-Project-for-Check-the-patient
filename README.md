@@ -11,6 +11,8 @@ A comprehensive web application that predicts multiple diseases using machine le
   - 💉 Diabetes
   - 🧠 Stroke
   - 🩺 Chronic Kidney Disease
+  - 🩺 Asthma
+  - 🩺 CBC
 - **User-friendly Interface**: Simple and intuitive web interface
 - **Real-time Prediction**: Get instant risk assessment
 - **Responsive Design**: Works on both desktop and mobile devices
@@ -61,21 +63,29 @@ A comprehensive web application that predicts multiple diseases using machine le
 4. Select the branch and main file (app.py)
 5. Click 'Deploy!'
 
-#### 2. Heroku
+<!--2. Render  -->
+#### 2. Render
+
+1. Create a free account at [Render](https://render.com/)
+2. Install the [Render CLI](https://render.com/docs/render-cli)
+3. Initialize your Render app:
+
+
+<!-- #### 2. Heroku
 
 1. Install the [Heroku CLI](https://devcenter.heroku.com/articles/heroku-cli)
 2. Login to Heroku:
    ```bash
    heroku login
-   ```
-3. Create a new Heroku app:
+   ``` -->
+<!-- 3. Create a new Heroku app:
    ```bash
    heroku create your-app-name
    ```
 4. Deploy your code:
    ```bash
    git push heroku main
-   ```
+   ``` -->
 
 #### 3. Docker (For any platform)
 
@@ -114,6 +124,8 @@ Ensure you have the following datasets in your project directory:
 - `lung_cancer.csv`
 - `stroke-data.csv`
 - `ChronicKidneyDisease_EHRs_from_AbuDhabi.csv`
+- `asthma_disease_data.csv`
+-  `csb_blood_test.csv `
 
 ## 🏃‍♂️ Running the Application
 
