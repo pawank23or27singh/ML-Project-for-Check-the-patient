@@ -274,5 +274,7 @@ class DiseaseModelTrainer:
 
 if __name__ == "__main__":
     trainer = DiseaseModelTrainer()
+    MODELS_LOADED = True
+
 
     trainer.run()
